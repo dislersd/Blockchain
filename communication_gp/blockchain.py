@@ -3,9 +3,9 @@ import json
 from time import time
 from uuid import uuid4
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request  # pylint: disable=F0401
 from urllib.parse import urlparse
-import requests
+import requests  # pylint: disable=F0401
 
 import sys
 
@@ -16,7 +16,27 @@ class Blockchain(object):
         self.current_transactions = []
         self.nodes = set()
 
-        self.new_block(previous_hash=1, proof=100)
+        self.create_genesis_block()
+
+    def create_genesis_block(self):
+        """
+        Create the genesis block and add it to the chain
+
+        The genesis block is the anchor of the cahin. 
+        It must be identical for all nodes, or consensus will fail
+
+        It is normally hardcoded
+        """
+
+        block = {
+            'index': 1,
+            'timestamp': 0,
+            'transactions': [],
+            'proof': 99,
+            'previous_hash': 1
+        }
+
+        self.chain.append(block)
 
     def new_block(self, proof, previous_hash=None):
         """
@@ -39,6 +59,7 @@ class Blockchain(object):
         self.current_transactions = []
 
         self.chain.append(block)
+        self.broadcast_new_block(block)
         return block
 
     def new_transaction(self, sender, recipient, amount):
@@ -100,7 +121,7 @@ class Blockchain(object):
         """
         guess = f'{last_proof}{proof}'.encode()
         guess_hash = hashlib.sha256(guess).hexdigest()
-        return guess_hash[:6] == "000000"
+        return guess_hash[:5] == "00000"
 
     def valid_chain(self, chain):
         """
@@ -175,6 +196,20 @@ class Blockchain(object):
 
         return False
 
+    def broadcast_new_block(self, block):
+        """
+        Alert neighbors in list of nodes a new block has been mined
+        :param block: <Block> the block that has been mined and added
+        to the chain
+        """        
+
+        post_data = {"block": block}
+
+        for node in self.nodes:
+            res = requests.post(f'http://{node}/block/new', json=post_data)
+
+            if res.status_code != 200:
+                print('THERE WAS AN ERROR')
 
 # Instantiate our Node
 app = Flask(__name__)
@@ -193,7 +228,7 @@ def mine():
     last_proof = last_block['proof']
 
     values = request.get_json()
-    submitted_proof = values.get('proof')
+    submitted_proof = values['proof']
 
     if blockchain.valid_proof(last_proof, submitted_proof):
         # We must receive a reward for finding the proof.
@@ -252,7 +287,7 @@ def full_chain():
 
 @app.route('/last_proof', methods=['GET'])
 def last_proof():
-    last_proof_value = blockchain.last_block.get('proof')
+    last_proof_value = blockchain.last_block['proof']
     response = {
         'proof': last_proof_value
     }
@@ -279,6 +314,38 @@ def register_nodes():
         'total_nodes': list(blockchain.nodes),
     }
     return jsonify(response), 201
+
+
+@app.route('/block/new', methods=['POST'])
+def new_block():
+    values = request.get_json()
+
+    # Check that the required fields are in the POST'ed data
+    required = ['block']
+    if not all(k in values for k in required):
+        return 'Missing Values', 400
+
+    #TODO: Validate sender is actually an approved node
+
+    # Validate the block
+
+    # Make sure index is one greater than last chain
+    new_block = values['block']
+    last_block = blockchain.last_block
+
+    if new_block['index'] == last_block['index'] + 1:
+        # Make sure that the blocks last hash matched our hash of
+        # our last block
+        if new_block['previous_hash'] == last_block.hash(last_block):
+            # Validate the proof in new block
+            if blockchain.valid_proof(last_block['proof'], new_block['proof']):
+                # block is good, add to chain
+                blockchain.chain.append(new_block)
+                return 'Block Accepted', 20
+
+    #TODO: print error message
+    #TODO: request the chain from our peers and check for consensus
+    return 'Block rejected', 200
 
 
 @app.route('/nodes/resolve', methods=['GET'])

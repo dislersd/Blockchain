@@ -3,7 +3,7 @@ import json
 from time import time
 from uuid import uuid4
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request  # pylint: disable=F0401
 
 import sys
 
@@ -128,36 +128,38 @@ blockchain = Blockchain()
 
 @app.route('/mine', methods=['POST'])
 def mine():
-    value = request.get_json()
+    proof = request.get_json()
 
-    valid_proof(value)
+    required = ['proof']
+    if not all(k in proof for k in required):
+        return "Missing  values", 400
+
+    # if not blockchain.valid_proof(last_proof, proof['proof']):
+    #     response = {
+    #         'message': 'proof is invalid or already submitted'
+    #     }
+    #     return jsonify(response), 200
+
+    # We must receive a reward for finding the proof.
+    # The sender is "0" to signify that this node has mine a new coin
+    blockchain.new_transaction(
+        sender="0",
+        recipient=node_identifier,
+        amount=1,
+    )
+    last_block = blockchain.last_block
+    # Forge the new BLock by adding it to the chain
+    previous_hash = blockchain.hash(last_block)
+    block = blockchain.new_block(proof, previous_hash)
 
     response = {
-        "res": 'It works!'
+        'message': "New Block Forged",
+        'index': block['index'],
+        'transactions': block['transactions'],
+        'proof': block['proof'],
+        'previous_hash': block['previous_hash'],
     }
-
     return jsonify(response), 200
-
-    # # We must receive a reward for finding the proof.
-    # # The sender is "0" to signify that this node has mine a new coin
-    # blockchain.new_transaction(
-    #     sender="0",
-    #     recipient=node_identifier,
-    #     amount=1,
-    # )
-
-    # # Forge the new BLock by adding it to the chain
-    # previous_hash = blockchain.hash(last_block)
-    # block = blockchain.new_block(proof, previous_hash)
-
-    # response = {
-    #     'message': "New Block Forged",
-    #     'index': block['index'],
-    #     'transactions': block['transactions'],
-    #     'proof': block['proof'],
-    #     'previous_hash': block['previous_hash'],
-    # }
-    # return jsonify(response), 200
 
 
 @app.route('/transactions/new', methods=['POST'])
@@ -190,7 +192,7 @@ def full_chain():
 @app.route('/last_proof', methods=['GET'])
 def last_proof():
     response = {
-        'last_proof': blockchain.last_block['proof']
+        'proof': blockchain.last_block['proof']
     }
 
     return jsonify(response), 200
