@@ -28,7 +28,7 @@ def valid_proof(last_proof, proof):
     """
     guess = f'{last_proof}{proof}'.encode()
     guess_hash = hashlib.sha256(guess).hexdigest()
-    return guess_hash[:6] == "000000"
+    return guess_hash[:5] == "00000"
 
 
 if __name__ == '__main__':
@@ -42,15 +42,16 @@ if __name__ == '__main__':
     # Run forever until interrupted
     while True:
         # Get the last proof from the server
-        r = requests.get(url=node + "/last_proof")
-        data = r.json()
-        new_proof = proof_of_work(data.get('proof'))
+        res = requests.get(url=node + "/last_proof")
+        res = res.json()
+        new_proof = proof_of_work(res['proof'])
 
         post_data = {"proof": new_proof}
 
         r = requests.post(url=node + "/mine", json=post_data)
+        print(r.json()['message'])
         data = r.json()
-        if data.get('message') == 'New Block Forged':
+        if data['message'] == 'New Block Forged':
             coins_mined += 1
             print("Total coins mined: " + str(coins_mined))
         else:
